@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stone Man Shooting Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #333;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        #gameContainer {
+            position: relative;
+            width: 800px;
+            height: 600px;
+        }
+        #gameCanvas {
+            background-color: #87CEEB;
+            border: 3px solid #000;
+        }
+        #gameUI {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 18px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+        #gameOver, #levelComplete, #welcomeScreen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+        }
+        #welcomeScreen {
+            display: block;
+            z-index: 100;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div id="gameUI">
+            <div>Level: <span id="level">1</span></div>
+            <div>Score: <span id="score">0</span></div>
+            <div>Time: <span id="timer">20</span></div>
+            <div>Enemies Left: <span id="enemiesLeft">5</span></div>
+            <div>Turns Left: <span id="turnsLeft">5</span></div>
+        </div>
+        <div id="gameOver">
+            <h2>Game Over</h2>
+            <p>Your final score: <span id="finalScore">0</span></p>
+            <button id="restartButton">Play Again</button>
+        </div>
+        <div id="levelComplete">
+            <h2>Level Complete!</h2>
+            <p>Get ready for level <span id="nextLevel">2</span></p>
+            <button id="nextLevelButton">Continue</button>
+        </div>
+        <div id="welcomeScreen">
+            <h2>Stone Man Shooting Game</h2>
+            <p>Destroy all the stone enemies before time runs out!</p>
+            <p>Controls:</p>
+            <ul style="text-align: left; list-style-type: none;">
+                <li>Move: Arrow Keys or WASD</li>
+                <li>Shoot: Click/Tap or Spacebar</li>
+            </ul>
+            <p>You have limited turns (shots) per level!</p>
+            <p>Hit bombs to create explosions that destroy nearby enemies</p>
+            <p>Collect power-ups for extra turns or time (levels 3+)</p>
+            <button id="startGameButton">Start Game</button>
+        </div>
+    </div>
+
+    <script>
+        // Game setup
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gameOverScreen = document.getElementById('gameOver');
+        const levelCompleteScreen = document.getElementById('levelComplete');
+        const welcomeScreen = document.getElementById('welcomeScreen');
+        const restartButton = document.getElementById('restartButton');
+        const nextLevelButton = document.getElementById('nextLevelButton');
+        const startGameButton = document.getElementById('startGameButton');
+
+        // Game state
+        let gameRunning = false;
+        let level = 1;
+        let score = 0;
+        let timeLeft = 20;
+        let enemiesRemaining = 5;
+        let gameLoopInterval;
+        let timerInterval;
+        let turnsLeft = 5;
+        let bombTargets = [];
+        let projectiles = [];
+        let enemies = [];
+        let powerUps = [];
+        let floatingTexts = [];
+        let flashTimer = 0;
+        let shouldEndGame = false;
+        let projectileInFlight = false;
+        let hitStreak = 0;
+        let multiplier = 1;
+
+        // Stone Man character
+        const player = {
+            x: canvas.width / 2,
+            y: canvas.height - 100,
+            width: 60,
+            height: 80,
+            speed: 5,
+            color: '#CD853F',
+            facingDirection: 0, // 0 = right, Math.PI = left
+            moving: {
+                left: false,
+                right: false,
+                up: false,
+                down: false
+            }
+        };
+
+        // Images
+        const playerImage = new Image();
+        playerImage.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMDAgMzAwIj48c3R5bGU+LnN0MHtmaWxsOiNDRDg1M0Y7c3Ryb2tlOiMwMDA7c3Ryb2tlLXdpZHRoOjQ7fS5zdDF7ZmlsbDojREVCODg3O3N0cm9rZTojMDAwO3N0cm9rZS13aWR0aDo0O30uc3Qye2ZpbGw6IzAwMDt9PC9zdHlsZT48ZyBpZD0iYm9keSI+PHJlY3QgY2xhc3M9InN0MCIgeD0iMTAwIiB5PSIxMDAiIHdpZHRoPSIxMDAiIGhlaWdodD0iODAiIHJ4PSIxMCIgcnk9IjEwIi8+PC9nPjxnIGlkPSJoZWFkIj48cG9seWdvbiBjbGFzcz0ic3QxIiBwb2ludHM9IjEwMCw2MCAxNDAsNjAgMTgwLDYwIDIwMCw4MCAxODAsMTAwIDE0MCwxMDAgMTAwLDEwMCA4MCw4MCIvPjxjaXJjbGUgY2xhc3M9InN0MiIgY3g9IjEyMCIgY3k9IjgwIiByPSI1Ii8+PGNpcmNsZSBjbGFzcz0ic3QyIiBjeD0iMTQwIiBjeT0iODAiIHI9IjUiLz48Y2lyY2xlIGNsYXNzPSJzdDIiIGN4PSIxNjAiIGN5PSI4MCIgcj0iNSIvPjxjaXJjbGUgY2xhc3M9InN0MiIgY3g9IjE4MCIgY3k9IjgwIiByPSI1Ii8+PC9nPjxnIGlkPSJhcm1zIj48cmVjdCBjbGFzcz0ic3QwIiB4PSI2MCIgeT0iMTEwIiB3aWR0aD0iNDAiIGhlaWdodD0iNjAiIHJ4PSIxMCIgcnk9IjEwIi8+PHJlY3QgY2xhc3M9InN0MCIgeD0iMjAwIiB5PSIxMTAiIHdpZHRoPSI0MCIgaGVpZ2h0PSI2MCIgcng9IjEwIiByeT0iMTAiLz48L2c+PGcgaWQ9ImxlZ3MiPjxyZWN0IGNsYXNzPSJzdDAiIHg9IjExMCIgeT0iMTgwIiB3aWR0aD0iMzAiIGhlaWdodD0iNjAiIHJ4PSIxMCIgcnk9IjEwIi8+PHJlY3QgY2xhc3M9InN0MCIgeD0iMTYwIiB5PSIxODAiIHdpZHRoPSIzMCIgaGVpZ2h0PSI2MCIgcng9IjEwIiByeT0iMTAiLz48L2c+PC9zdmc+';
+
+        // Sound effects
+        const shootSound = new Audio('data:audio/wav;base64,UklGRiQEAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAEAAD+/wQA8/8YAP3/EwAIAA8ACwASAAcABwACABoABQBNACgAe/8IAOD+jv/L/nH/0P6b/8X+nv/s/uX/Ef84/3//0v7p/72+FP5TvTj/cMAWAUbHWAR/yWMEq7zP/R2xT/gnvH0DB9TFDdCzIRi8igsNc3BNAqmHsg/jyfAk6LCC/suLZPDEw34APf8fCSnnxv4B/ncGRwnUFZULyRK0DEUVzwC8AcPnbuY0y9rjOdmL9srxePOkA3QSdgO3DZYHSgPGAB4Kyw/cE2xHX2PI/VTQK7BlnMOF7m/0EdMAESYwHB5QdzYJRXpEu2UrMqEUX/vM40TO6LPKvp3GEtZZ46X34QwQFJkLsQy2/8fsyPWv/vMMyhyEM34pIhBZAO3mYvUg/5X19u0a+eT/ygJPA9cIEgnUBHULZRN6D0Ep/Tk6NV4IWOk9z0O3L6SttDHPc+2rEhgkcjJOPCdIeUTcM4YfyA3lAU/9svfn7QnrBvPn/dMI/wWzAC4AVQXRBo0PqhJ3GBIWPRLbAWvuxNbpxCG0q7TrxY3k9P2EFSIcGSqiJw4doxMADjkG2/hc+B/3Bu9J9Rv9UQIMA1cJi/8g9evxrPjo+80CaQ5tF8kW0ApfA3r/E/W85dzWnM3lzcPY0OZl9DEDiw/PF1kewCHbHPYQIAkUAdT43O/w8P/3b/oG/5P/V/zc+jP8jP0h/5n/7wCPBcALxhCbDuwROBCTCWEAAvdZ7DHf4dcR2snjzfCg/jsH4wydEcAU8RC4DCQJWAaD/5373fqy+j77//xUADcD+wVdB20JYgkHB+oEZgPLA8wDdgR/CVAN2w/qD5wPHAseAZj3BO9F5hjhc+Ia6knzH/wWBHQKGg6hDtwM5Qi+BZcCd/3K+LX2u/Yq+Bf9XQLiBeAIMgoOC44KAAfEAif/3f9RANkBVQDp/qH+qP6BAH4ClgWDCGQKhgkoBpMAMvnr8Gvp0+QX44/l1+vX9OX+RQdpDu0Siw/NCdYDhf7M+Nr0PfJ58QP1qfqp/7UEuQmmDIYOpA8rDWIJxwPR/Zv6Vvr2+vj9rgGcB68NQAxJCPADsf9W+mz2M/QO9Eb3gfz9ACgDFwYUCLQKjwvfC3IM0wv9BhkDeQDk/g7+9vzD+zD7yfoy+Qz7+fzv/gsB6gGuA14GlgcjCRQKUgqwCFsGBAVnAz0BBv91/ez8avyo/ab9tv2N/uf/rgGNApUDRgS+Aw8DQwLHAJj/Pv54/Pj77/yh/FP9Kv9V/6P+FQBLAgkDrQN3BOsEwARTAUb/kv6S/v394f5p/u3+qP29/qsAUQBaAFUBVgGzACsA3f+p/27/ov5p/8v/l/9g/1cARAAzAEkBZgHuAD4BnQBlAET+qf6N/3T/df4B/4P/q/85/xAA5QAQAKn/OQBhAHMA9f8XANf/FwDw/0cAlADQ/zUALAHWANUAHwFvAGEAAwACAFEAFwCJ/w0Atf8cAOL/EQDp/4//dv+z/7P/+f/I/+H/5v/X/w==');
+        const explosionSound = new Audio('data:audio/wav;base64,UklGRiQDAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQADAACzrZ+3vMbM0dbX1tTRzMbAvLWupaOioJ6dmpiVlJOTlJWXmZygo6itsbjCy9Pa3+Hj5OPj4+Hg3t3b2djW1dTS0dDNzMzMzMzMzMzNzc7Oz9DR0tPU1dbW19jY2djZ2NjX19bV1dXU09TT09LR0M/Pzs7Ozs7Ozs7Pz8/P0NHR0dHS0tLT09PT09PT0tLS0tHR0tHR0NDQ0NDQ0M/Pz8/Pz8/Pz8/Pz8/Pz8/Pz9DQ0M/Pz8/Pzs/Ozs7Ozc3Nzc3Nzc3Nzs3Ozs7Ozs/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Pz8/Q0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NHR0dHR0dHR0dHR0dDR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tHR0dHR0dHR0dHR0dHR0dHR0dHR0dHR0dHS0tLS0tLS0tLT09PT09PT09PT09PT09PT09LS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLT09PT09PT09LT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PU1NTU1NTU1NTU1NTU1NTU1NTU1NPT09PT09PT09PT09PT09PT09PT09PT1NXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1NTU1NTU1NTV1dXV1dbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbV1dXV1dXW1tbW19fX19fX19fX19fX19fX19fX19fX19fX19fX19fX19fX19bW1tbW1tfX19fY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2A==');
+        const powerUpSound = new Audio('data:audio/wav;base64,UklGRpQCAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YXACAADAwMC/v7+9vb27u7u5ubm4uLi3t7e1tbW0tLSzs7OysrKxsbGwsLCvr6+urq6tra2srKyrq6uqqqqpqamoqKinp6empqalpaWkpKSjo6OioqKhoaGgoKCfn5+enp6dnZ2cnJybm5uampqZmZmYmJiXl5eWlpaVlZWUlJSTk5OSkpKRkZGQkJCPj4+Ojo6NjY2MjIyLi4uKioqJiYmIiIiHh4eGhoaFhYWEhISDg4OCgoKBgYGAgIB/f39+fn59fX18fHx7e3t6enp5eXl4eHh3d3d2dnZ1dXV0dHRzc3NycnJxcXFwcHBvb29ubm5tbW1sbGxra2tqamppaWloaGhnZ2dmZmZlZWVkZGRjY2NiYmJhYWFgYGBfX19eXl5dXV1cXFxbW1taWlpZWVlYWFhXV1dWVlZVVVVUVFRTU1NSUlJRUVFQUFBPT09OTk5NTU1MTExLS0tKSkpJSUlISEhHR0dGRkZFRUVERERDQ0NCQkJBQUFAQEA/Pz8+Pj49PT08PDw7Ozs6Ojo5OTk4ODg3Nzc2NjY1NTU0NDQzMzMyMjIxMTEwMDA1NTU5OTk+Pj5CQkJGRkZKSkpOTk5SUlJWVlZaWlpeXl5iYmJmZmZqampubm5ycnJ2dnZ6enp+fn6BgYGFhYWJiYmNjY2RkZGVlZWZmZmdnZ2hoaGlpaWpqamtra2xsbG1tbW5ubm9vb3BwcHFxcXJycnNzc3R0dHV1dXZ2dnd3d3e3t7f39/g4ODh4eHi4uLj4+Pk5OTl5eXm5ubn5+fo6Ojp6enq6urr6+vs7Ozt7e3u7u7v7+/w8PDx8fHy8vLz8/P09PT19fX29vb39/f4+Pj5+fn6+vr7+/v8/Pz9/f3+/v7///8=');
+
+        // Initialize event listeners
+        startGameButton.addEventListener('click', function() {
+            welcomeScreen.style.display = 'none';
+            initGame();
+        });
+        
+        restartButton.addEventListener('click', initGame);
+        nextLevelButton.addEventListener('click', startNextLevel);
+
+        // Handle keyboard controls
+        document.addEventListener('keydown', function(e) {
+            handleKeyDown(e.key);
+        });
+        
+        document.addEventListener('keyup', function(e) {
+            handleKeyUp(e.key);
+        });
+        
+        // Mouse click for shooting
+        canvas.addEventListener('click', function(e) {
+            handleClick(e);
+        });
+        
+        // Touch events for mobile
+        canvas.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touchX = e.touches[0].clientX - rect.left;
+            const touchY = e.touches[0].clientY - rect.top;
+            
+            if (gameRunning && turnsLeft > 0 && !projectileInFlight) {
+                projectileInFlight = true;
+                shoot(touchX, touchY);
+                turnsLeft--;
+                updateUI();
+                checkEndGame();
+            }
+        });
+
+        function handleClick(e) {
+            if (gameRunning && turnsLeft > 0 && !projectileInFlight) {
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                
+                projectileInFlight = true;
+                shoot(mouseX, mouseY);
+                turnsLeft--;
+                updateUI();
+                checkEndGame();
+            }
+        }
+
+        function checkEndGame() {
+            clearTimeout(window.endGameTimeout);
+            window.endGameTimeout = setTimeout(() => {
+                if (turnsLeft <= 0 && enemiesRemaining > 0 && gameRunning) {
+                    shouldEndGame = true;
+                }
+                projectileInFlight = false;
+            }, 1000);
+        }
+
+        function handleKeyDown(key) {
+            switch(key) {
+                case 'ArrowLeft':
+                case 'a':
+                    player.moving.left = true;
+                    player.facingDirection = Math.PI;
+                    break;
+                case 'ArrowRight':
+                case 'd':
+                    player.moving.right = true;
+                    player.facingDirection = 0;
+                    break;
+                case 'ArrowUp':
+                case 'w':
+                    player.moving.up = true;
+                    break;
+                case 'ArrowDown':
+                case 's':
+                    player.moving.down = true;
+                    break;
+                case ' ':
+                    if (gameRunning && turnsLeft > 0 && !projectileInFlight) {
+                        const shootX = player.facingDirection === 0 ? 
+                            player.x + 100 : player.x - 100;
+                        
+                        projectileInFlight = true;
+                        shoot(shootX, player.y);
+                        turnsLeft--;
+                        updateUI();
+                        checkEndGame();
+                    }
+                    break;
+            }
+        }
+
+        function handleKeyUp(key) {
+            switch(key) {
+                case 'ArrowLeft':
+                case 'a':
+                    player.moving.left = false;
+                    break;
+                case 'ArrowRight':
+                case 'd':
+                    player.moving.right = false;
+                    break;
+                case 'ArrowUp':
+                case 'w':
+                    player.moving.up = false;
+                    break;
+                case 'ArrowDown':
+                case 's':
+                    player.moving.down = false;
+                    break;
+            }
+        }
+
+        function initGame() {
+            console.log("Initializing game");
+            
+            // Reset game state
+            level = 1;
+            score = 0;
+            timeLeft = 20;
+            turnsLeft = 5;
+            enemiesRemaining = Math.min(5, turnsLeft);
+            projectiles = [];
+            enemies = [];
+            bombTargets = [];
+            powerUps = [];
+            floatingTexts = [];
+            flashTimer = 0;
+            hitStreak = 0;
+            multiplier = 1;
+            shouldEndGame = false;
+            projectileInFlight = false;
+            
+            // Update UI
+            updateUI();
+            
+            // Clear any existing intervals
+            clearInterval(gameLoopInterval);
+            clearInterval(timerInterval);
+            
+            // Clear any pending timeouts
+            clearTimeout(window.endGameTimeout);
+            
+            // Reset screens
+            gameOverScreen.style.display = 'none';
+            levelCompleteScreen.style.display = 'none';
+            welcomeScreen.style.display = 'none';
+            
+            // Create enemies and bomb targets for level 1
+            createEnemies();
+            createBombTargets();
+            
+            // Start game loop
+            gameRunning = true;
+            gameLoopInterval = setInterval(gameLoop, 1000 / 60); // 60 FPS
+            timerInterval = setInterval(updateTimer, 1000);
+            
+            console.log("Game initialized:", {
+                level,
+                turnsLeft,
+                enemiesRemaining,
+                gameRunning
+            });
+        }
+
+        function shoot(targetX, targetY) {
+            // Play sound
+            try {
+                shootSound.currentTime = 0;
+                shootSound.play().catch(e => console.log("Audio play failed:", e));
+            } catch(e) {
+                console.log("Audio error:", e);
+            }
+            
+            // Calculate direction
+            const dx = targetX - player.x;
+            const dy = targetY - player.y;
+            const angle = Math.atan2(dy, dx);
+            
+            // Create stone projectile
+            projectiles.push({
+                x: player.x,
+                y: player.y - 10,
+                radius: 8,
+                speed: 10,
+                angle: angle,
+                color: '#8B4513', // Saddle brown color for stone projectile
+                isStone: true
+            });
+        }
+
+        function updatePlayerPosition() {
+            // Update position based on movement state
+            if (player.moving.left && player.x > player.width / 2) {
+                player.x -= player.speed;
+            }
+            if (player.moving.right && player.x < canvas.width - player.width / 2) {
+                player.x += player.speed;
+            }
+            if (player.moving.up && player.y > canvas.height / 2) {
+                player.y -= player.speed;
+            }
+            if (player.moving.down && player.y < canvas.height - player.height / 2) {
+                player.y += player.speed;
+            }
+        }
+
+        function drawGround() {
+            // Draw ground
+            ctx.fillStyle = '#C2B280'; // Sand color
+            ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
+            
+            // Draw grass tufts
+            ctx.fillStyle = '#4CAF50';
+            for (let i = 0; i < 10; i++) {
+                const x = Math.random() * canvas.width;
+                ctx.beginPath();
+                ctx.arc(x, canvas.height - 40, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function drawPlayer() {
+            ctx.save();
+            ctx.translate(player.x, player.y);
+            
+            // Flip the player based on facing direction
+            if (player.facingDirection === Math.PI) {
+                ctx.scale(-1, 1);
+            }
+            
+            // Draw the player image
+            ctx.drawImage(playerImage, -player.width / 2, -player.height / 2, player.width, player.height);
+            
+            ctx.restore();
+        }
+
+        function updateProjectiles() {
+            // Update positions
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                
+                // Skip if projectile no longer exists
+                if (!p) continue;
+                
+                // Move projectile
+                p.x += Math.cos(p.angle) * p.speed;
+                p.y += Math.sin(p.angle) * p.speed;
+                
+                // Draw stone projectile
+                if (p.isStone) {
+                    // Draw a small stone
+                    ctx.fillStyle = p.color;
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 1;
+                    
+                    // Draw stone (irregular polygon)
+                    ctx.beginPath();
+                    const sides = 5; // Pentagon for stone shape
+                    const jitter = 0.3; // Irregularity factor
+                    
+                    for (let j = 0; j < sides; j++) {
+                        const angle = j * 2 * Math.PI / sides;
+                        const radiusVar = p.radius * (1 + (Math.random() - 0.5) * jitter);
+                        const x = p.x + radiusVar * Math.cos(angle);
+                        const y = p.y + radiusVar * Math.sin(angle);
+                        
+                        if (j === 0) {
+                            ctx.moveTo(x, y);
+                        } else {
+                            ctx.lineTo(x, y);
+                        }
+                    }
+                    
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                } else {
+                    // Default circular projectile as fallback
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                
+                let hitSomething = false;
+                
+                // Check for collision with enemies
+                for (let j = enemies.length - 1; j >= 0; j--) {
+                    const e = enemies[j];
+                    const dx = p.x - e.x;
+                    const dy = p.y - e.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < p.radius + e.radius) {
+                        // Hit! Remove the enemy and projectile
+                        enemies.splice(j, 1);
+                        hitSomething = true;
+                        
+                        // Update hit streak and multiplier
+                        hitStreak++;
+                        if (hitStreak >= 3) {
+                            multiplier = 2;
+                        }
+                        if (hitStreak >= 5) {
+                            multiplier = 3;
+                        }
+                        
+                        // Update score and enemies left
+                        const pointsEarned = 10 * level * multiplier;
+                        score += pointsEarned;
+                        enemiesRemaining--;
+                        updateUI();
+                        
+                        // Show floating score text
+                        showFloatingText(e.x, e.y, `+${pointsEarned}`, '#FFFF00');
+                        
+                        break;
+                    }
+                }
+                
+                // Check for collision with bomb targets
+                for (let j = bombTargets.length - 1; j >= 0; j--) {
+                    const b = bombTargets[j];
+                    // Skip if already exploding
+                    if (b.exploding) continue;
+                    
+                    const dx = p.x - b.x;
+                    const dy = p.y - b.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < p.radius + b.radius) {
+                        // Hit a bomb! Start explosion
+                        b.exploding = true;
+                        hitSomething = true;
+                        
+                        // Play explosion sound
+                        try {
+                            explosionSound.currentTime = 0;
+                            explosionSound.play().catch(e => console.log("Audio play failed:", e));
+                        } catch(e) {
+                            console.log("Audio error:", e);
+                        }
+                        
+                        break;
+                    }
+                }
+                
+                // Remove if hit something or off screen
+                if (hitSomething || p.x < 0 || p.x > canvas.width || p.y < 0 || p.y > canvas.height) {
+                    projectiles.splice(i, 1);
+                    
+                    // Reset hit streak if missed (no hit and off screen)
+                    if (!hitSomething && (p.x < 0 || p.x > canvas.width || p.y < 0 || p.y > canvas.height)) {
+                        hitStreak = 0;
+                        multiplier = 1;
+                    }
+                }
